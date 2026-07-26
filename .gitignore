@@ -1,0 +1,4 @@
+/game
+*.o
+.DS_Store
+.vscode/
