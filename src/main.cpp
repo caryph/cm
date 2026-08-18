@@ -15,7 +15,7 @@ enum class Dir: uint8_t {RIGHT, DOWN, LEFT, UP};
 Dir dir_set[4] = {Dir::RIGHT, Dir::DOWN, Dir::LEFT, Dir::UP};
 
 enum class Celltype: uint8_t {GENERATOR, MOVER, ROTATOR_CW, ROTATOR_CCW, PUSH, SLIDE, WALL, TRASH, ENEMY};
-struct Cell {Celltype type; Dir dir = Dir::RIGHT; };
+struct Cell {Celltype type; Dir dir = Dir::RIGHT; bool updated = false; };
 
 struct Celldata { KeyboardKey key; const char* filename; Texture2D texture; };
 std::map<Celltype, Celldata> cell_data = {
@@ -76,6 +76,10 @@ Dir reverse(Dir dir) {
     else return Dir::UP;
 }
 
+bool collinear(Dir dir1, Dir dir2) {
+    return dir1 == dir2 || reverse(dir1) == dir2;
+}
+
 Cord2d offset(Cord2d pos, Dir dir) {
     if (dir == Dir::RIGHT) return {pos.x+1, pos.y};
     else if (dir == Dir::LEFT) return {pos.x-1, pos.y};
@@ -92,7 +96,7 @@ void push(Cord2d pos, Dir cur_dir, int force, Cell* replacement) {
             if (grid[pos_next].dir == cur_dir) force++;
             else if (grid[pos_next].dir == reverse(cur_dir)) force--;
         }
-        if (force < 0 || grid[pos_next].type == Celltype::WALL || grid[pos_next].type == Celltype::TRASH) return;
+        if (force < 0 || grid[pos_next].type == Celltype::WALL || (grid[pos_next].type == Celltype::SLIDE && !collinear(grid[pos_next].dir, cur_dir)) || grid[pos_next].type == Celltype::TRASH) return;
         pos_next = offset(pos_next, cur_dir);
     }
 
@@ -144,13 +148,16 @@ int get_pos_depth(Cord2d pos, Dir d) {
 }
 
 void run_simulation() {
-    Celltype update_order[4] = {Celltype::GENERATOR, Celltype::ROTATOR_CW, Celltype::ROTATOR_CCW, Celltype::MOVER};
+    for (auto& [pos, cell]: grid) cell.updated = false;
 
+    Celltype update_order[4] = {Celltype::GENERATOR, Celltype::ROTATOR_CW, Celltype::ROTATOR_CCW, Celltype::MOVER};
     for (Celltype c: update_order) {
         for (int d = 0; d < 4; d++) {
             std::map<int, std::vector<Cord2d>> depth;
             for (auto& [pos, cell]: grid) {
                 if (grid[pos].dir == (Dir)d && grid[pos].type == c) {
+                    if (cell.updated) continue;
+                    cell.updated = true;
                     depth[get_pos_depth(pos, cell.dir)].push_back(pos);
                 }
             }
