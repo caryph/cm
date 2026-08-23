@@ -5,16 +5,15 @@
 #include <map>
 #include <vector>
 #include <iostream>
+#include <cstdlib>
 
 const Color bg = {28, 30, 36, 255};
 const Color lines = {42, 46, 54, 255};
-const Color hl_fill = {70, 78, 96, 90};
-const Color hl_edge = {110, 124, 150, 255};
 
-enum class Dir: uint8_t {RIGHT, DOWN, LEFT, UP};
+enum class Dir: uint8_t {RIGHT, LEFT, UP, DOWN};
 Dir dir_set[4] = {Dir::RIGHT, Dir::DOWN, Dir::LEFT, Dir::UP};
 
-enum class Celltype: uint8_t {GENERATOR, MOVER, ROTATOR_CW, ROTATOR_CCW, PUSH, SLIDE, WALL, TRASH, ENEMY};
+enum class Celltype: uint8_t {GENERATOR, ROTATOR_CW, ROTATOR_CCW, MOVER, SLIDE, PUSH, WALL, ENEMY, TRASH};
 struct Cell {Celltype type; Dir dir = Dir::RIGHT; bool updated = false; };
 
 struct Celldata { KeyboardKey key; const char* filename; Texture2D texture; };
@@ -89,7 +88,11 @@ Cord2d offset(Cord2d pos, Dir dir) {
 
 void push(Cord2d pos, Dir cur_dir, int force, Cell* replacement) {
     Cord2d pos_next = offset(pos, cur_dir);
-    if (grid[pos].type == Celltype::WALL) return;
+    if (grid[pos].type == Celltype::WALL || grid[pos].type == Celltype::TRASH) return;
+    else if (grid[pos].type == Celltype::ENEMY) {
+        grid.erase(pos);
+        return;
+    }
 
     while (grid.count(pos_next) != 0 && grid[pos_next].type != Celltype::TRASH && grid[pos_next].type != Celltype::ENEMY) {
         if (grid[pos_next].type == Celltype::MOVER) {
@@ -175,6 +178,45 @@ void run_simulation() {
     }
 }
 
+void v1_add_cell(const char* cell_info) {
+    const char* p = cell_info;
+    char* end;
+    int cell_data[4];
+    for (int i = 0; i < 4; i++) {
+        cell_data[i] = (int)strtol(p, &end, 10);
+        if (end == p) return;
+        p = end + 1;
+    }
+
+    grid[{cell_data[2], -cell_data[3]}] = Cell{static_cast<Celltype>(cell_data[0]), (Dir)(dir_set[cell_data[1]])};
+}
+
+void v1_import(const char* code) {
+    int segment = 0;
+    char cell_info[64];
+    int p = 0;
+    for (int i = 0; code[i] != '\0'; i++) {
+        if (code[i] == ';') segment++;
+        else if (segment == 4) {
+            if (code[i] == ',') {
+                cell_info[p] = '\0';
+                v1_add_cell(cell_info);
+                p = 0;
+            }
+            else cell_info[p++] = code[i];
+        }
+    }
+}
+
+float alpha = 0.0f;
+float alpha_speed = 1.0f;
+const char* displayed_text;
+
+void display_text(const char* text) {
+    alpha = 1.0f;
+    displayed_text = text;
+}
+
 int main(void) {
     const int screenW = 800;
     const int screenH = 450;
@@ -236,6 +278,12 @@ int main(void) {
         if (IsKeyPressed(KEY_Q)) dir_selected = rotate_dir(dir_selected, -1);
         if (IsKeyPressed(KEY_E)) dir_selected = rotate_dir(dir_selected, 1);
         if (IsKeyPressed(KEY_SPACE)) run_simulation();
+        if (IsKeyPressed(KEY_I)) {
+            const char* clipboard = GetClipboardText();
+            if (clipboard) v1_import(clipboard);
+            display_text("level imported!");
+        }
+        // if (IsKeyPressed(KEY_O)) v1_export();
 
         BeginDrawing();
         ClearBackground(bg);
@@ -267,12 +315,18 @@ int main(void) {
             }
         }
 
-        
+        DrawText(TextFormat("pos: [%d, %d]", (int)hover.x, (int)hover.y), 10, 10, 20, ORANGE);
+        DrawText(TextFormat("selected: %d-%d", celltype_selected, dir_selected), 10, 30, 20, YELLOW);
+        DrawText(TextFormat("WASD to move"), 10, 70, 20, WHITE);
+        DrawText(TextFormat("1-9 to select cell"), 10, 90, 20, WHITE);
+        DrawText(TextFormat("q+e to rotate"), 10, 110, 20, WHITE);
+        DrawText(TextFormat("i+o to import and export"), 10, 130, 20, WHITE);
+        DrawText(TextFormat("[SPACE] to run"), 10, 150, 20, WHITE);
 
-        DrawText(TextFormat("cam: (%d, %d)", (int)cam.x, (int)cam.y), 10, 10, 20, WHITE);
-        DrawText(TextFormat("hover: (%d, %d)", (int)hover.x, (int)hover.y), 10, 30, 20, YELLOW);
-        DrawText(TextFormat("selected cell: %d", celltype_selected), 10, 50, 20, ORANGE);
-        DrawText(TextFormat("selected dir: %d", dir_selected), 10, 70, 20, RED);
+        if (alpha > 0) {
+            alpha = fmax(0, alpha - alpha_speed * dt);
+            DrawText(TextFormat(displayed_text), 10, 190, 20, (Color){150, 255, 150, static_cast<unsigned char>(alpha*255)});
+        }
 
         EndDrawing();
     }
