@@ -89,6 +89,7 @@ Cord2d offset(Cord2d pos, Dir dir) {
 void push(Cord2d pos, Dir cur_dir, int force, Cell* replacement) {
     Cord2d pos_next = offset(pos, cur_dir);
     if (grid[pos].type == Celltype::WALL || grid[pos].type == Celltype::TRASH) return;
+    if (grid.at(pos).type == Celltype::SLIDE && !collinear(grid.at(pos).dir, cur_dir)) return;
     else if (grid[pos].type == Celltype::ENEMY) {
         grid.erase(pos);
         return;
